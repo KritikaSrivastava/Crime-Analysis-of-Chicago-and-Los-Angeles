@@ -1,0 +1,477 @@
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf8" />
+        <title>[FoF] Team Project</title>
+        <script type='text/javascript' src="js/jquery-1.10.2.min.js"></script>
+        <script type='text/javascript' src="js/jquery-ui.min.js"></script>
+        <script type='text/javascript' src="js/jquery-1.10.2.js"></script>
+        <link href="css/main.css" rel="stylesheet" type="text/css">
+        <script type='text/javascript' src="https://www.gstatic.com/charts/loader.js"> </script>
+        <script type='text/javascript' src="js/projectScript.js"></script>
+        <script type='text/xmldata' src="js/XSLT.xsl"></script>
+        <script type='text/javascript' src="js/onclick.js"></script>
+
+    </head>
+    <body>
+
+<script id="sparql2json" type="text/xmldata">
+<!--
+
+XSLT script to format SPARQL Query Results XML Format into Exhibit JSON format
+
+Version 1 : jeni tennison (see http://www.jenitennison.com/visualisation/data/SRXtoGoogleVisData.xsl)
+Version 2 : Li Ding (2009-11-16)  (added one field in header, "label"; replace apos with whitespace)
+
+-->
+
+<!--
+=============================================
+BEGIN: XSLT Stylesheet Transform
+=============================================
+-->
+<xsl:stylesheet version="1.0"
+  xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:sparql="http://www.w3.org/2005/sparql-results#">
+
+<xsl:strip-space elements="*" />
+<xsl:preserve-space elements="sparql:literal" />
+<xsl:output method="text" />
+
+<xsl:param name="tqx" />
+
+<xsl:variable name="defaultNs">
+  <xsl:call-template name="namespace">
+    <xsl:with-param name="string" select="/rdf:RDF/rdf:Description[1]/rdf:type[1]/@rdf:resource" />
+  </xsl:call-template>
+</xsl:variable>
+
+<xsl:template match="sparql:sparql">
+  <xsl:param name="tqx" select="$tqx" />
+
+  <xsl:variable name="reqId">
+    <xsl:variable name="fromTQX">
+      <xsl:call-template name="parseTQX">
+        <xsl:with-param name="param" select="'reqId'" />
+        <xsl:with-param name="tqx" select="$tqx" />
+      </xsl:call-template>
+    </xsl:variable>
+    <xsl:choose>
+      <xsl:when test="$fromTQX != ''">
+        <xsl:value-of select="$fromTQX" />
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:text>0</xsl:text>
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:variable>
+
+  <xsl:variable name="version">
+    <xsl:variable name="fromTQX">
+      <xsl:call-template name="parseTQX">
+        <xsl:with-param name="param" select="'version'" />
+        <xsl:with-param name="tqx" select="$tqx" />
+      </xsl:call-template>
+    </xsl:variable>
+    <xsl:choose>
+      <xsl:when test="$fromTQX != ''">
+        <xsl:value-of select="$fromTQX" />
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:text>0.6</xsl:text>
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:variable>
+
+  <xsl:variable name="out">
+    <xsl:variable name="fromTQX">
+      <xsl:call-template name="parseTQX">
+        <xsl:with-param name="param" select="'out'" />
+        <xsl:with-param name="tqx" select="$tqx" />
+      </xsl:call-template>
+    </xsl:variable>
+    <xsl:choose>
+      <xsl:when test="$fromTQX != ''">
+        <xsl:value-of select="$fromTQX" />
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:text>json</xsl:text>
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:variable>
+
+  <xsl:variable name="responseHandler">
+    <xsl:variable name="fromTQX">
+      <xsl:call-template name="parseTQX">
+        <xsl:with-param name="param" select="'responseHandler'" />
+        <xsl:with-param name="tqx" select="$tqx" />
+      </xsl:call-template>
+    </xsl:variable>
+    <xsl:choose>
+      <xsl:when test="$fromTQX != ''">
+        <xsl:value-of select="$fromTQX" />
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:text>google.visualization.Query.setResponse</xsl:text>
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:variable>
+  <xsl:value-of select="$responseHandler" />
+  <xsl:text>({</xsl:text>
+  <xsl:text>version:</xsl:text><xsl:value-of select="$version" /><xsl:text>,</xsl:text>
+  <xsl:text>status:'ok',</xsl:text>
+  <xsl:text>reqId:</xsl:text><xsl:value-of select="$reqId" /><xsl:text>,</xsl:text>
+  <xsl:text>table:{</xsl:text>
+  <xsl:apply-templates select="sparql:head" />
+  <xsl:apply-templates select="sparql:results" />
+  <xsl:text>}</xsl:text><!-- end table -->
+  <xsl:text>})</xsl:text>
+</xsl:template>
+
+<xsl:template match="sparql:head">
+  <xsl:text>cols:[</xsl:text>
+  <xsl:for-each select="sparql:variable">
+    <xsl:apply-templates select="." />
+    <xsl:if test="position() != last()">,</xsl:if>
+  </xsl:for-each>
+  <xsl:text>],</xsl:text>
+</xsl:template>
+
+<xsl:template match="sparql:variable">
+  <xsl:variable name="name" select="@name" />
+  <xsl:variable name="binding"
+    select="(/sparql:sparql/sparql:results/sparql:result/sparql:binding[@name = $name])[1]" />
+  <xsl:text>{id:'</xsl:text>
+  <xsl:value-of select="@name" />
+  <xsl:text>',label:'</xsl:text>
+  <xsl:value-of select="@name" />
+  <xsl:text>',type:'</xsl:text>
+  <xsl:choose>
+    <xsl:when test="$binding/sparql:uri">string</xsl:when>
+    <xsl:otherwise>
+      <xsl:variable name="datatype" select="$binding/sparql:literal/@datatype" />
+      <xsl:choose>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#decimal'">number</xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#integer'">number</xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#float'">number</xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#double'">number</xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#int'">number</xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#boolean'">boolean</xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#date'">date</xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#dateTime'">datetime</xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#time'">timeofday</xsl:when>
+        <xsl:otherwise>
+          <xsl:variable name="value" select="$binding/sparql:literal" />
+          <xsl:choose>
+            <xsl:when test="string(number($value)) != 'NaN'">number</xsl:when>
+            <xsl:when test="$value = 'true' or $value = 'false'">boolean</xsl:when>
+            <xsl:otherwise>string</xsl:otherwise>
+          </xsl:choose>
+        </xsl:otherwise>
+      </xsl:choose>
+    </xsl:otherwise>
+  </xsl:choose>
+  <xsl:text>'}</xsl:text>
+</xsl:template>
+
+<xsl:template match="sparql:results">
+  <xsl:text>rows:[</xsl:text>
+  <xsl:for-each select="sparql:result">
+    <xsl:apply-templates select="." />
+    <xsl:if test="position() != last()">,</xsl:if>
+  </xsl:for-each>
+  <xsl:text>]</xsl:text>
+</xsl:template>
+
+<xsl:template match="sparql:result">
+  <xsl:variable name="result" select="." />
+  <xsl:text>{c:[</xsl:text>
+  <xsl:for-each select="/sparql:sparql/sparql:head/sparql:variable">
+    <xsl:variable name="name" select="@name" />
+    <xsl:apply-templates select="$result/sparql:binding[@name = $name]" />
+    <xsl:if test="position() != last()">,</xsl:if>
+  </xsl:for-each>
+  <xsl:text>]}</xsl:text>
+</xsl:template>
+
+<xsl:template match="sparql:binding">
+  <xsl:text>{v:</xsl:text>
+  <xsl:choose>
+    <xsl:when test="sparql:uri">
+      <xsl:text>'</xsl:text>
+      <xsl:value-of select="sparql:uri" />
+      <xsl:text>'</xsl:text>
+    </xsl:when>
+    <xsl:otherwise>
+      <xsl:variable name="datatype" select="sparql:literal/@datatype" />
+      <xsl:choose>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#decimal' or
+                        $datatype = 'http://www.w3.org/2001/XMLSchema#integer' or
+                        $datatype = 'http://www.w3.org/2001/XMLSchema#float' or
+                        $datatype = 'http://www.w3.org/2001/XMLSchema#double' or
+                        $datatype = 'http://www.w3.org/2001/XMLSchema#int' or
+                        (not($datatype) and string(number(sparql:literal)) != 'NaN')">
+          <xsl:value-of select="sparql:literal" />
+        </xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#date' or
+                        $datatype = 'http://www.w3.org/2001/XMLSchema#dateTime'">
+          <xsl:text>new Date(</xsl:text>
+          <xsl:value-of select="substring(sparql:literal, 1, 4)" />
+          <xsl:text>,</xsl:text>
+          <xsl:value-of select="substring(sparql:literal, 6, 2)" />
+          <xsl:text>,</xsl:text>
+          <xsl:value-of select="substring(sparql:literal, 9, 2)" />
+          <xsl:if test="$datatype = 'http://www.w3.org/2001/XMLSchema#dateTime'">
+            <xsl:text>,</xsl:text>
+            <xsl:value-of select="substring(sparql:literal, 12, 2)" />
+            <xsl:text>,</xsl:text>
+            <xsl:value-of select="substring(sparql:literal, 15, 2)" />
+            <xsl:text>,</xsl:text>
+            <xsl:value-of select="substring(sparql:literal, 18, 2)" />
+          </xsl:if>
+          <xsl:text>)</xsl:text>
+        </xsl:when>
+        <xsl:when test="$datatype = 'http://www.w3.org/2001/XMLSchema#time'">
+          <xsl:text>[</xsl:text>
+          <xsl:value-of select="substring(sparql:literal, 1, 2)" />
+          <xsl:text>,</xsl:text>
+          <xsl:value-of select="substring(sparql:literal, 4, 2)" />
+          <xsl:text>,</xsl:text>
+          <xsl:value-of select="substring(sparql:literal, 7, 2)" />
+          <xsl:text>]</xsl:text>
+        </xsl:when>
+        <xsl:otherwise>
+          <xsl:text>'</xsl:text>
+          <xsl:value-of select='translate(translate(sparql:literal,"&apos;"," "),"&#10;","")' />
+          <xsl:text>'</xsl:text>
+        </xsl:otherwise>
+      </xsl:choose>
+    </xsl:otherwise>
+  </xsl:choose>
+  <xsl:text>}</xsl:text>
+</xsl:template>
+
+<xsl:template name="namespace">
+  <xsl:param name="string" />
+  <xsl:param name="namespace" />
+  <xsl:choose>
+    <xsl:when test="contains($string, '#')">
+      <xsl:value-of select="concat(substring-before($string, '#'), '#')" />
+    </xsl:when>
+    <xsl:when test="contains($string, '/')">
+      <xsl:call-template name="namespace">
+        <xsl:with-param name="string" select="substring-after($string, '/')" />
+        <xsl:with-param name="namespace"
+          select="concat($namespace, substring-before($string, '/'), '/')" />
+      </xsl:call-template>
+    </xsl:when>
+    <xsl:otherwise>
+      <xsl:value-of select="$namespace" />
+    </xsl:otherwise>
+  </xsl:choose>
+</xsl:template>
+
+<xsl:template name="parseTQX">
+  <xsl:param name="param" />
+  <xsl:param name="tqx" />
+  <xsl:if test="contains($tqx, concat($param, ':'))">
+    <xsl:value-of select="substring-before(substring-after(concat($tqx, ';'), concat($param, ':')), ';')" />
+  </xsl:if>
+</xsl:template>
+
+</xsl:stylesheet>
+<!--
+=============================================
+END: XSLT Stylesheet Transform
+=============================================
+-->
+  </script>
+        <div id="container">
+            <header id="title">
+            <h1>CRIME ANALYSIS OF CHICAGO AND LOS ANGELES</h1>
+            </header>
+            <br/>
+            <div id="leftInfo">
+                <h2 class="inline">Introduction: </h2><p class="inline">The project report outlines how crime analysis can help assist Chicago and Los Angeles Police Department to prevent criminal activities and ergo reduce crime rate. The Police Department strives to reduce the crime rate and this was the motivation behind the project.Our goal is to provide resourceful insights, which in turn leads to reduction in crime rate.
+                </p>
+                <br /><br/>
+                <h2 class="inline">Target Audience: </h2><p class="inline">This project is intended towards the Police Department for assisting in reducing the crime rate and also to compare the crime rate of two metropolitan and 2nd & 3rd most populous cities of USA. </p>
+                
+            </div>
+            
+            <div id="rightInfo">
+                   <h2 class="left-aligned">Data Sources:</h2>
+                    <ol>
+                        <li><a href="https://catalog.data.gov/dataset/crimes-2001-to-present-398a4">Crime Description of Chicago from 2001 to present</a></li>
+                        <li><a href="https://catalog.data.gov/dataset/crime-data-from-2010-to-present">Crime Description of Los Angeles from 2010 to present</a></li>
+                    </ol>
+            
+            </div>
+            
+            <nav id="queryNav">
+            <button class="query" onclick="query1()" id="btn1">Query 1</button>
+            <button class="query" onclick="query2()" id="btn2">Query 2</button>
+            <button class="query" onclick="query3()" id="btn3">Query 3</button>
+            <button class="query" onclick="query4()" id="btn4">Query 4</button>
+            <button class="query" onclick="query5()" id="btn5">Query 5</button>
+            <button class="query" onclick="query6()" id="btn6">Query 6</button>
+            </nav>
+            
+            <div class="leftContent" id="leftContent1">
+            <h2>Query Title</h2>
+            <p>This is where the visualization will be displayed.</p>
+            </div>
+            
+            <div class="rightContent" id="rightContent1">
+                <div class="code" id="code1">
+                        <h4>Comparison of the crimes over the years in Chicago </h4>
+                        <p>prefix raw: &lthttps://github.com/timrdf/csv2rdf4lod-automation/wiki/CSV2RDF4LOD_BASE_URI#/source/Users/dataset/melvinjames/vocab/raw/&gt </br>
+select * where {{ </br>
+select ?c (count(?c) as ?2013cases)where{?s raw:year '2013',?t;raw:crimename ?c} group by ?c}</br>
+. </br>
+{select ?c (count(?c) as ?2014cases)where{?s raw:year '2014',?t;raw:crimename ?c} group by ?c}</br>
+.</br>
+{select ?c (count(?c) as ?2015cases)where{?s raw:year '2015',?t;raw:crimename ?c} group by ?c}}
+                        </p>
+                    </div>
+                <p class="dark">The first query was a simple display of all the crimes from 2013 through 2015.We used the Chicago dataset</p>
+                <p class="dark">For the visualization we simply displayed the total number of crimes per category in the combo chart using the Google Visualization API. From this chart, we can clearly see which crime was committed the highest in Chicago in all the three years.</p>
+                
+            </div>
+                <div class="leftContent" id="leftContent2">
+            <h2>Query Title</h2>
+            <p>This is where the visualization will be displayed.</p>
+            </div>
+                
+            
+            <div class="rightContent alt" id="rightContent2">
+                <div class="code" id="code2">
+                        <h4>Total Cases vs total Arrests in Chicago </h4>
+                        <p>
+                            prefix raw:&lthttps://github.com/timrdf/csv2rdf4lod-automation/wiki/CSV2RDF4LOD_BASE_URI#/source/Users/dataset/melvinjames/vocab/raw/&gt<br/>
+select * where <br/>
+{{select ?CrimeDesc (count(?CrimeDesc) as ?TotalCases) where { ?s raw:crimename ?CrimeDesc }group by ?CrimeDesc order by desc (?TotalArrest)}<br/>
+.<br/>
+{select ?CrimeDesc (count(?CrimeDesc) as ?TotalArrest) where { ?s raw:crimename ?CrimeDesc  . ?s raw:arrest  '1'}group by ?CrimeDesc order by desc (?TotalArrest)}}<br/>
+                        </p>
+                    </div>
+                <p class="dark">The second query was to compare the total crimes committed and total arrest in that category from 2013 through 2015. We used the Chicago dataset </p>
+                   <p class="dark">For the visualization we simply displayed total numbers of crimes and the total arrest in each of the categories in the comboGraph using the Google Visualization API.</p>
+
+            
+            </div>
+            
+            <div class="leftContent" id="leftContent3">
+            <h2>Query Title</h2>
+            <p>This is where the visualization will be displayed.</p>
+            </div>
+            
+            <div class="rightContent" id="rightContent3">
+                <div class="code" id="code3">
+                        <h4>Crimes in LA </h4>
+                        <p>prefix raw:&lthttps://github.com/timrdf/csv2rdf4lod-automation/wiki/CSV2RDF4LOD_BASE_URI#/source/Users/dataset/melvinjames/vocab/raw/&gt<br/>
+select ?crimeDesc (count(?crimeDesc) as ?frequency)<br/> 
+where <br/>
+{ <br/>
+?s raw:crimename ?crimeDesc . <br/>
+}<br/>
+group by ?crimeDesc order by desc (?crimeDesc)
+                        </p>
+                    </div>
+                <p class="dark">The third query was a simple display of the various types of crimes in LA.</p>
+                <p class="dark">For the visualization we simply displayed the results in piechart using the Google Visualization API. From this map, we can see which type of crime is more prevalent than others.</p>
+            </div>
+                <div class="leftContent" id="leftContent4">
+            <h2>Query Title</h2>
+            <p>This is where the visualization will be displayed.</p>
+            </div>
+                
+            
+            <div class="rightContent alt" id="rightContent4">
+                <div class="code" id="code4">
+                        <h4>Crime in most common areas in LA</h4>
+                        <p>
+prefix raw: &lthttps://github.com/timrdf/csv2rdf4lod-automation/wiki/CSV2RDF4LOD_BASE_URI#/source/Users/dataset/melvinjames/vocab/raw/&gt<br/>
+select * where {<br/>
+{SELECT ?CrimeDesc  (count(?CrimeDesc) as ?SideWalk) WHERE { ?s  raw:location 'SIDEWALK' .  ?s raw:crimename ?CrimeDesc } <br/>
+group by  ?PremiseDesc ?CrimeDesc order by ?PremiseDesc ?CrimeDesc ?count }<br/>
+.{ SELECT ?CrimeDesc  (count(?CrimeDesc) as ?Street) WHERE { ?s  raw:location 'STREET' .  ?s raw:crimename ?CrimeDesc } <br/>
+group by  ?PremiseDesc ?CrimeDesc order by ?PremiseDesc ?CrimeDesc ?count }<br/>
+.{SELECT ?CrimeDesc  (count(?CrimeDesc) as ?ParkingLot) WHERE { ?s  raw:location 'PARKING LOT' .  ?s raw:crimename ?CrimeDesc } <br/>
+group by  ?PremiseDesc ?CrimeDesc order by ?PremiseDesc ?CrimeDesc ?count}<br/>
+.{SELECT ?CrimeDesc  (count(?CrimeDesc) as ?Alley) WHERE { ?s  raw:location 'ALLEY' .  ?s raw:crimename ?CrimeDesc }<br/> 
+group by  ?PremiseDesc ?CrimeDesc order by ?PremiseDesc ?CrimeDesc ?count}<br/>
+.{SELECT ?CrimeDesc  (count(?CrimeDesc) as ?BarAndNightclub) WHERE { ?s  raw:location 'BAR/COCKTAIL/NIGHTCLUB' .  ?s raw:crimename ?CrimeDesc }<br/> 
+group by  ?PremiseDesc ?CrimeDesc order by ?PremiseDesc ?CrimeDesc ?count}}<br/>
+                        </p>
+                    </div>
+                <p class="dark">The fourth query was to display the count of various kind of crimes in most common areas in LA
+                </p> 
+                <p class="dark">
+                For the visualization we simply displayed the results in combochart using Google Visualization API.
+                </p>
+            
+            </div>
+            
+            <div class="leftContent" id="leftContent5">
+            <h2>Query Title</h2>
+            <p>This is where the visualization will be displayed.</p>
+            </div>
+            
+            <div class="rightContent" id="rightContent5">
+                <div class="code" id="code5">
+                        <h4>Crimes during certain time intervals in LA </h4>
+                        <p>
+PREFIX raw: &lthttps://github.com/timrdf/csv2rdf4lod-automation/wiki/CSV2RDF4LOD_BASE_URI#/source/Users/dataset/melvinjames/vocab/raw/&gt<br/>
+PREFIX xsd:&lthttp://www.w3.org/2001/XMLSchema#&gt<br/>
+select * where{{<br/>
+select ?c (count(?c) as ?night8pmto12am)where {?a raw:time ?t;raw:crimename ?c FILTER(xsd:integer(?t) >= 2000 && xsd:integer(?t) <= 2359 )}group by ?c}<br/>
+.{select ?c (count(?c) as ?latenight12amto3am)where {?a raw:time ?t;raw:crimename ?c FILTER(xsd:integer(?t) >= 0 && xsd:integer(?t) < 300 )}group by ?c}<br/>
+.{select ?c (count(?c) as ?earlymorning3amto6am)where {?a raw:time ?t;raw:crimename ?c FILTER(xsd:integer(?t) >= 300 && xsd:integer(?t) < 600 )}group by ?c}<br/>
+.{select ?c (count(?c) as ?morning6amto12pm)where {?a raw:time ?t;raw:crimename ?c FILTER(xsd:integer(?t) >= 600 && xsd:integer(?t) < 1200  )}group by ?c}<br/>
+.{select ?c (count(?c) as ?afternoon12pmto4pm)where {?a raw:time ?t;raw:crimename ?c FILTER(xsd:integer(?t) >= 1200 && xsd:integer(?t) < 1600  )}group by ?c}<br/>
+.{select ?c (count(?c) as ?evening4pmto8pm)where {?a raw:time ?t;raw:crimename ?c FILTER(xsd:integer(?t) >= 1600 && xsd:integer(?t) < 2000  )}group by ?c}}<br/>
+                        </p>
+                    </div>
+                <p class="dark">In this query we compares all crimes occurring at night,latenight,earlymorning, morning,afternoon and evening.  </p>
+
+            </div>
+                <div class="leftContent" id="leftContent6">
+            <h2>Query Title</h2>
+            <p>This is where the visualization will be displayed.</p>
+            </div>
+                
+            
+            <div class="rightContent alt" id="rightContent6">
+                <div class="code" id="code6">
+                        <h4>Comparison of crimes in LA and Chicago </h4>
+                        <p>
+prefix raw:&lthttps://github.com/timrdf/csv2rdf4lod-automation/wiki/CSV2RDF4LOD_BASE_URI#/source/Users/dataset/melvinjames/vocab/raw/&gt<br/> 
+select * where<br/>
+{{<br/>
+select ?crimeDesc (count(?crimeDesc) as ?crimeInChicago)<br/>
+where {<br/>
+graph&lthttp://localhost:3030/crime/data/chicago&gt<br/>
+{?s raw:crimename ?crimeDesc}}group by ?crimeDesc order by desc( ?crimeInChicago)}<br/>
+.{select ?crimeDesc (count(?crimeDesc) as ?crimeInLA)<br/> 
+where <br/>
+{ graph&lthttp://localhost:3030/crime/data/lacity&gt<br/>
+{?s raw:crimename ?crimeDesc}}group by ?crimeDesc order by desc( ?crimeInLA)}}order by ?crimeDesc<br/>
+                        </p>
+                    </div>
+
+                      <p class="dark">In this query we used both the dataset and compared the frequency of crimes.  </p>
+      
+            </div>
+            
+            <div id="summary">
+            <h5 class="dark">Summary:</h5>
+            <p id="summaryTxt">We have gathered a lot of knowledge regarding crimes occurring in the cities of Los Angeles and Chicago. We were able to understand the frequency of different types of crimes. Further we were able to infer from the results that are generated, if adequate number of arrests are being made for every case. The police can have a better understanding where and when major crimes can occur. As for civilians, one can know which places are safer to visit and be ready knowing about details of crimes happening in these cities.
+            </p>
+
+            </div>
+            
+            <footer id="footer"></footer>
+        
+    </body>
+</html>
